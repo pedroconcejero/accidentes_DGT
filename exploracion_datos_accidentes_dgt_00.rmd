@@ -1,0 +1,139 @@
+---
+title: "ucm_master_accidentes_dg"
+author: "Pedro Concejero"
+date: "2/6/2022"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(rooroot.dir = '/home/pedro/Escritorio/UCM_master/0000_trabajos_junio_2022/enrique bermejo accidentes')
+
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+## Cargamos datos
+
+
+```{r load, warning=FALSE}
+
+accidentes_orig <- read_excel("TABLA_ACCIDENTES_20 v2.xlsx",
+                              na = c("999", "9999"))
+summary(accidentes_orig)
+
+```
+
+## Convertimos últimas columnas a factores
+
+```{r}
+names(accidentes_orig)
+col_names <- names(accidentes_orig)[51:75]
+accidentes_2 <- accidentes_orig
+accidentes_2[col_names] <- lapply(accidentes_orig[col_names] , factor)
+summary(accidentes_2)
+```
+
+```{r}
+
+t <- table(accidentes_2$CONDICION_ILUMINACION,
+           accidentes_2$TOTAL_MU24H)
+
+t
+```
+
+
+```{r, fig.height = 12, fig.width = 12}
+
+library(vcd)
+
+# Quizás no es la mejor librería de mosaicos pero vamos a intentarlo
+
+mosaic(~ CONDICION_ILUMINACION + TOTAL_MU24H, 
+       data = accidentes_2[accidentes_2$TOTAL_MU24H > 0, ],
+  main = "DGT", shade = TRUE, legend = TRUE)
+
+```
+
+¡Pues tenías razón! No hay manera de averiguar los códigos de condición iluminación.
+
+Del gráfico que se muestra hay pocas conclusiones significativas, pero hay alguna:
+- El mayor número de víctimas mortales el día del accidente (4) está asociado a la condición de iluminación 5.
+- Y la condición de iluminación 6 ha incrementado (pero no significativamente) el número de muertos.
+
+Condiciones de iluminación "malas" -> 5 y 6, sean las que sean
+
+Lo mismo pero con heridos:
+
+
+```{r, fig.height = 12, fig.width = 12}
+
+# Quizás no es la mejor librería de mosaicos pero vamos a intentarlo
+
+mosaic(~ CONDICION_ILUMINACION + TOTAL_HG24H, 
+       data = accidentes_2[accidentes_2$TOTAL_HG24H > 0, ],
+  main = "DGT", shade = TRUE, legend = TRUE)
+
+```
+
+Aquí se vuelve a ver la relación, aquí sí significativa, entre condición 6 y número de heridos graves
+
+
+# Poisson regression (with glm)
+
+```{r}
+
+accidentes_orig$MES <- as.factor(accidentes_orig$MES)
+accidentes_orig$DIA_SEMANA <- as.factor(accidentes_orig$DIA_SEMANA)
+accidentes_orig$HORA <- as.factor(accidentes_orig$HORA)
+accidentes_orig$CONDICION_NIVEL_CIRCULA <- as.factor(accidentes_orig$CONDICION_NIVEL_CIRCULA)
+accidentes_orig$CONDICION_FIRME <- as.factor(accidentes_orig$CONDICION_FIRME)
+accidentes_orig$CONDICION_ILUMINACION <- as.factor(accidentes_orig$CONDICION_ILUMINACION)
+
+
+poisson1 <- glm(TOTAL_MU24H ~ MES + DIA_SEMANA + HORA +
+                  # COD_PROVINCIA +
+                  # CARRETERA +
+                  # TITULARIDAD_VIA +
+                  # TIPO_ACCIDENTE +
+                  CONDICION_NIVEL_CIRCULA +
+                  CONDICION_FIRME +
+                  CONDICION_ILUMINACION, 
+                family = poisson, 
+                data = accidentes_orig)
+
+summary(poisson1)
+
+```
+
+From:
+https://stats.oarc.ucla.edu/r/dae/zip/
+
+Though we can run a Poisson regression in R using the glm function in one of the core packages, we need another package to run the zero-inflated poisson model. We use the pscl package.
+
+```{r}
+
+library(pscl)
+
+zip1 <- zeroinfl(TOTAL_MU24H ~ MES + DIA_SEMANA + HORA 
+                 # +
+                 #  # COD_PROVINCIA +
+                 #  # CARRETERA +
+                 #  # TITULARIDAD_VIA +
+                 #  # TIPO_ACCIDENTE +
+                 #  CONDICION_NIVEL_CIRCULA +
+                 #  CONDICION_FIRME +
+                 #  CONDICION_ILUMINACION
+                 , 
+                dist = "poisson", 
+                data = accidentes_orig)
+
+summary(zip1)
+
+
+
+```
+
